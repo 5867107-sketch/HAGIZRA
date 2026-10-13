@@ -5,6 +5,7 @@ import smtplib
 import urllib.request
 from datetime import datetime
 from email.message import EmailMessage
+from email.utils import make_msgid
 from zoneinfo import ZoneInfo
 
 API = "https://hagizra.news/api/v2/messages?offset=0&limit=20&direction=desc"
@@ -40,23 +41,30 @@ def clean(text):
     return text.replace("**", "").strip()
 
 
-def local_time(ts):
+def local_dt(ts):
     try:
         ts = re.sub(r"(\.\d{6})\d+", r"\1", ts).replace("Z", "+00:00")
-        dt = datetime.fromisoformat(ts).astimezone(ZoneInfo("Asia/Jerusalem"))
-        return dt.strftime("%H:%M  %d.%m.%Y")
+        return datetime.fromisoformat(ts).astimezone(ZoneInfo("Asia/Jerusalem"))
     except Exception:
-        return ""
+        return datetime.now(ZoneInfo("Asia/Jerusalem"))
 
 
 def send_email(server, message):
     text = clean(message["text"])
-    subject = text.split("\n")[0][:90]
+    dt = local_dt(message["timestamp"])
+    day = dt.strftime("%d.%m.%Y")
+
+    # same subject + same References root for the whole day -> one Gmail thread per day
+    root_id = "<hagizra-" + dt.strftime("%Y-%m-%d") + "@hagizra.news>"
+
     mail = EmailMessage()
     mail["From"] = GMAIL_ADDRESS
     mail["To"] = GMAIL_ADDRESS
-    mail["Subject"] = "מבזק: " + subject
-    mail.set_content(f"{text}\n\n{local_time(message['timestamp'])}\nhttps://hagizra.news/")
+    mail["Subject"] = "מבזקי הגזרה " + day
+    mail["Message-ID"] = make_msgid(domain="hagizra.news")
+    mail["In-Reply-To"] = root_id
+    mail["References"] = root_id
+    mail.set_content(f"{dt.strftime('%H:%M')}\n\n{text}\n\nhttps://hagizra.news/")
     server.send_message(mail)
 
 
