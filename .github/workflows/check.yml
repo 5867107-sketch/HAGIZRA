@@ -30,4 +30,8 @@ jobs:
           git config user.name "news-bot"
           git config user.email "news-bot@users.noreply.github.com"
           git add last_id.txt || true
-          git diff --cached --quiet || (git commit -m "update last id" && git push)
+          if ! git diff --cached --quiet; then
+            git commit -m "update last id"
+            git pull --rebase
+            git push
+          fi
