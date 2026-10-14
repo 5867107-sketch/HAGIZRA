@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import re
@@ -49,6 +50,18 @@ def local_dt(ts):
         return datetime.now(ZoneInfo("Asia/Jerusalem"))
 
 
+def to_html(text, time_str):
+    body = html.escape(text)
+    body = re.sub(r"(https?://[^\s<]+)", r'<a href="\1">\1</a>', body)
+    body = body.replace("\n", "<br>")
+    return (
+        '<div dir="rtl" style="direction:rtl; text-align:right; '
+        'font-size:16px; line-height:1.6">'
+        f"{time_str}<br><br>{body}<br><br>"
+        '<a href="https://hagizra.news/">hagizra.news</a></div>'
+    )
+
+
 def send_email(server, message):
     text = clean(message["text"])
     dt = local_dt(message["timestamp"])
@@ -64,7 +77,9 @@ def send_email(server, message):
     mail["Message-ID"] = make_msgid(domain="hagizra.news")
     mail["In-Reply-To"] = root_id
     mail["References"] = root_id
-    mail.set_content(f"{dt.strftime('%H:%M')}\n\n{text}\n\nhttps://hagizra.news/")
+    time_str = dt.strftime("%H:%M")
+    mail.set_content(f"{time_str}\n\n{text}\n\nhttps://hagizra.news/")
+    mail.add_alternative(to_html(text, time_str), subtype="html")
     server.send_message(mail)
 
 
