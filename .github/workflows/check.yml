@@ -23,6 +23,7 @@ jobs:
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
 
       - name: Save progress
         if: always()
@@ -32,6 +33,14 @@ jobs:
           git add last_id.txt || true
           if ! git diff --cached --quiet; then
             git commit -m "update last id"
-            git pull --rebase
-            git push
+            ok=0
+            for i in 1 2 3 4; do
+              if git pull --rebase && git push; then
+                ok=1
+                break
+              fi
+              echo "Push failed, retry $i"
+              sleep $((i * 5))
+            done
+            [ "$ok" = 1 ]
           fi
