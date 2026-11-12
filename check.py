@@ -3,24 +3,58 @@ import json
 import os
 import re
 import smtplib
+import time
 import urllib.request
 from datetime import datetime
 from email.message import EmailMessage
 from email.utils import make_msgid
 from zoneinfo import ZoneInfo
 
-API = "https://hagizra.news/api/v2/messages?offset=0&limit=20&direction=desc"
+API = "https://hagizra.news/api/v2/messages?offset={offset}&limit={limit}&direction=desc"
+PAGE_SIZE = 20      # how many flashes the site returns per request
+MAX_PAGES = 10      # look back at most 10 pages (200 flashes) after a long gap
 STATE_FILE = "last_id.txt"
-MAX_PER_RUN = 10
+MAX_PER_RUN = 60    # send at most this many emails per run; the rest go next run
 
-GMAIL_ADDRESS = os.environ["GMAIL_ADDRESS"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"].replace(" ", "")
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
+if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+    raise SystemExit(
+        "חסרים פרטי ג'ימייל. יש להוסיף את GMAIL_ADDRESS ואת "
+        "GMAIL_APP_PASSWORD ב-Settings > Secrets and variables > Actions."
+    )
+TO_EMAIL = os.environ.get("TO_EMAIL", "").strip() or GMAIL_ADDRESS
 
 
-def fetch_messages():
-    req = urllib.request.Request(API, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.load(resp)["messages"]
+def fetch_page(offset):
+    url = API.format(offset=offset, limit=PAGE_SIZE)
+    last_error = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.load(resp)["messages"]
+        except Exception as error:
+            last_error = error
+            time.sleep(2 * (attempt + 1))
+    raise last_error
+
+
+def fetch_since(last_id):
+    """Read newest-first pages until we reach flashes that were already handled."""
+    collected = {}
+    offset = 0
+    for _ in range(MAX_PAGES):
+        batch = fetch_page(offset)
+        fresh = [m for m in batch if m["id"] not in collected]
+        if not fresh:
+            break  # empty page, or the site ignored the offset
+        for m in fresh:
+            collected[m["id"]] = m
+        if last_id is None or min(m["id"] for m in batch) <= last_id:
+            break
+        offset += len(batch)
+    return list(collected.values())
 
 
 def read_last_id():
@@ -72,7 +106,7 @@ def send_email(server, message):
 
     mail = EmailMessage()
     mail["From"] = GMAIL_ADDRESS
-    mail["To"] = GMAIL_ADDRESS
+    mail["To"] = TO_EMAIL
     mail["Subject"] = "מבזקי הגזרה " + day
     mail["Message-ID"] = make_msgid(domain="hagizra.news")
     mail["In-Reply-To"] = root_id
@@ -84,11 +118,11 @@ def send_email(server, message):
 
 
 def main():
-    all_messages = fetch_messages()
+    last_id = read_last_id()
+    all_messages = fetch_since(last_id)
     if not all_messages:
         return
 
-    last_id = read_last_id()
     newest_id = max(m["id"] for m in all_messages)
 
     # first run: just remember where we are, do not spam old flashes
