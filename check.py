@@ -14,7 +14,7 @@ API = "https://hagizra.news/api/v2/messages?offset={offset}&limit={limit}&direct
 ASK_LIMIT = 100     # ask the site for this many flashes per request (it may return fewer)
 MAX_PAGES = 15      # after a long gap, read at most this many pages
 STATE_FILE = "last_id.txt"
-MAX_PER_RUN = 60    # send at most this many emails per run; the rest go next run
+MAX_PER_RUN = 100    # send at most this many emails per run; the rest go next run
 
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
